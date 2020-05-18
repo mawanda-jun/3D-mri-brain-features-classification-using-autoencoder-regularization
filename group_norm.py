@@ -1,4 +1,6 @@
-from keras.engine import Layer, InputSpec
+import torch.nn as nn
+
+from keras.engine import InputSpec
 from keras import initializers
 from keras import regularizers
 from keras import constraints
@@ -7,7 +9,7 @@ from keras import backend as K
 from keras.utils.generic_utils import get_custom_objects
 
 
-class GroupNormalization(Layer):
+class GroupNormalization(nn.Module):
     """Group normalization layer
 
     Group Normalization divides the channels into groups and computes within each group
@@ -61,7 +63,7 @@ class GroupNormalization(Layer):
                  beta_constraint=None,
                  gamma_constraint=None,
                  **kwargs):
-        super(GroupNormalization, self).__init__(**kwargs)
+        super().__init__()
         self.supports_masking = True
         self.groups = groups
         self.axis = axis
