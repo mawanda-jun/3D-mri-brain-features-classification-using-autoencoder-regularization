@@ -1,17 +1,17 @@
-import torch.nn as nn
+import torch
 
 # from keras.engine import InputSpec # TODO: where the hell is used this? Outside class
 
 import torch.nn.init as initializers
 # from keras import initializers
-from keras import regularizers
+# from keras import regularizers
 from keras import constraints
 from keras import backend as K
 
-from keras.utils.generic_utils import get_custom_objects
+# from keras.utils.generic_utils import get_custom_objects
 
 
-class GroupNormalization(nn.Module):
+class GroupNormalization(torch.nn.Module):
     """Group normalization layer
 
     Group Normalization divides the channels into groups and computes within each group
@@ -53,6 +53,7 @@ class GroupNormalization(nn.Module):
     """
 
     def __init__(self,
+                 input_shape,
                  groups=32,
                  axis=-1,
                  epsilon=1e-5,
@@ -72,14 +73,16 @@ class GroupNormalization(nn.Module):
         self.epsilon = epsilon
         self.center = center
         self.scale = scale
-        self.beta_initializer = initializers.
+        self.input_shape = input_shape
+        self.beta_initializer = initializers.get(beta_initializer)
         self.gamma_initializer = initializers.get(gamma_initializer)
-        self.beta_regularizer = regularizers.get(beta_regularizer)
-        self.gamma_regularizer = regularizers.get(gamma_regularizer)
-        self.beta_constraint = constraints.get(beta_constraint)
-        self.gamma_constraint = constraints.get(gamma_constraint)
+        self.beta_regularizer = beta_regularizer
+        self.gamma_regularizer = gamma_regularizer
+        self.beta_constraint = beta_constraint
+        self.gamma_constraint = gamma_constraint
 
-    def build(self, input_shape):
+        
+
         dim = input_shape[self.axis]
 
         if dim is None:
@@ -166,28 +169,28 @@ class GroupNormalization(nn.Module):
 
         return outputs
 
-    def get_config(self):
-        config = {
-            'groups': self.groups,
-            'axis': self.axis,
-            'epsilon': self.epsilon,
-            'center': self.center,
-            'scale': self.scale,
-            'beta_initializer': initializers.serialize(self.beta_initializer),
-            'gamma_initializer': initializers.serialize(self.gamma_initializer),
-            'beta_regularizer': regularizers.serialize(self.beta_regularizer),
-            'gamma_regularizer': regularizers.serialize(self.gamma_regularizer),
-            'beta_constraint': constraints.serialize(self.beta_constraint),
-            'gamma_constraint': constraints.serialize(self.gamma_constraint)
-        }
-        base_config = super(GroupNormalization, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
+    # def get_config(self):
+    #     config = {
+    #         'groups': self.groups,
+    #         'axis': self.axis,
+    #         'epsilon': self.epsilon,
+    #         'center': self.center,
+    #         'scale': self.scale,
+    #         'beta_initializer': initializers.serialize(self.beta_initializer),
+    #         'gamma_initializer': initializers.serialize(self.gamma_initializer),
+    #         'beta_regularizer': regularizers.serialize(self.beta_regularizer),
+    #         'gamma_regularizer': regularizers.serialize(self.gamma_regularizer),
+    #         'beta_constraint': constraints.serialize(self.beta_constraint),
+    #         'gamma_constraint': constraints.serialize(self.gamma_constraint)
+    #     }
+    #     base_config = super(GroupNormalization, self).get_config()
+    #     return dict(list(base_config.items()) + list(config.items()))
 
     def compute_output_shape(self, input_shape):
         return input_shape
 
 
-get_custom_objects().update({'GroupNormalization': GroupNormalization})
+# get_custom_objects().update({'GroupNormalization': GroupNormalization})
 
 
 if __name__ == '__main__':

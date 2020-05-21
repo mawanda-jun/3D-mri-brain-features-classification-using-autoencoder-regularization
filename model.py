@@ -143,6 +143,7 @@ def loss_gt(e=1e-8):
     
     return loss_gt_
 
+
 def loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1):
     """
     loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1)
