@@ -1,14 +1,5 @@
 import torch
-
-# from keras.engine import InputSpec # TODO: where the hell is used this? Outside class
-
 import torch.nn.init as initializers
-# from keras import initializers
-# from keras import regularizers
-from keras import constraints
-from keras import backend as K
-
-# from keras.utils.generic_utils import get_custom_objects
 
 
 class GroupNormalization(torch.nn.Module):
@@ -61,10 +52,6 @@ class GroupNormalization(torch.nn.Module):
                  scale=True,
                  beta_initializer='zeros',
                  gamma_initializer='ones',
-                 beta_regularizer=None,
-                 gamma_regularizer=None,
-                 beta_constraint=None,
-                 gamma_constraint=None,
                  **kwargs):
         super().__init__()
         self.supports_masking = True
@@ -74,14 +61,8 @@ class GroupNormalization(torch.nn.Module):
         self.center = center
         self.scale = scale
         self.input_shape = input_shape
-        self.beta_initializer = initializers.get(beta_initializer)
-        self.gamma_initializer = initializers.get(gamma_initializer)
-        self.beta_regularizer = beta_regularizer
-        self.gamma_regularizer = gamma_regularizer
-        self.beta_constraint = beta_constraint
-        self.gamma_constraint = gamma_constraint
-
-        
+        self.beta_initializer = beta_initializer
+        self.gamma_initializer = gamma_initializer
 
         dim = input_shape[self.axis]
 
@@ -101,31 +82,29 @@ class GroupNormalization(torch.nn.Module):
                              'multiple of the number of channels (' +
                              str(dim) + ').')
 
-        # self.input_spec = InputSpec(ndim=len(input_shape),  # TODO: look where it is used
-        #                             axes={self.axis: dim})
         shape = (dim,)
 
         if self.scale:
-            self.gamma = self.add_weight(shape=shape,
-                                         name='gamma',
-                                         initializer=self.gamma_initializer,
-                                         regularizer=self.gamma_regularizer,
-                                         constraint=self.gamma_constraint)
-        else:
-            self.gamma = None
-        if self.center:
-            self.beta = self.add_weight(shape=shape,
-                                        name='beta',
-                                        initializer=self.beta_initializer,
-                                        regularizer=self.beta_regularizer,
-                                        constraint=self.beta_constraint)
+            self.beta = torch.empty(shape, requires_grad=True)
+            if self.beta_initializer == 'zeros':
+                self.beta = initializers.zeros_(self.beta)
+            else:
+                raise ValueError("Bad beta_initializer type: choose 'zeros' or...")
         else:
             self.beta = None
-        self.built = True
+        if self.center:
+            self.gamma = torch.empty(shape, requires_grad=True)
+            if self.gamma_initializer == 'ones':
+                self.gamma = initializers.ones_(self.gamma)
+            else:
+                raise ValueError("Bad gamma_initializer type: choose 'zeros' or...")
+        else:
+            self.gamma = None
 
-    def call(self, inputs, **kwargs):
-        input_shape = K.int_shape(inputs)
-        tensor_input_shape = K.shape(inputs)
+        # self.built = True
+
+    def forward(self, inputs, **kwargs):
+        input_shape = inputs.shape
 
         # Prepare broadcasting shape.
         reduction_axes = list(range(len(input_shape)))
@@ -134,71 +113,51 @@ class GroupNormalization(torch.nn.Module):
         broadcast_shape[self.axis] = input_shape[self.axis] // self.groups
         broadcast_shape.insert(1, self.groups)
 
-        reshape_group_shape = K.shape(inputs)
+        reshape_group_shape = inputs.shape
         group_axes = [reshape_group_shape[i] for i in range(len(input_shape))]
         group_axes[self.axis] = input_shape[self.axis] // self.groups
         group_axes.insert(1, self.groups)
 
         # reshape inputs to new group shape
         group_shape = [group_axes[0], self.groups] + group_axes[2:]
-        group_shape = K.stack(group_shape)
-        inputs = K.reshape(inputs, group_shape)
+        # group_shape = torch.tensor(group_shape)
+        inputs = torch.reshape(inputs, group_shape)
 
         group_reduction_axes = list(range(len(group_axes)))
         group_reduction_axes = group_reduction_axes[2:]
 
-        mean = K.mean(inputs, axis=group_reduction_axes, keepdims=True)
-        variance = K.var(inputs, axis=group_reduction_axes, keepdims=True)
+        mean = torch.mean(inputs, dim=group_reduction_axes, keepdim=True)
+        variance = torch.var(inputs, dim=group_reduction_axes, keepdim=True)
 
-        inputs = (inputs - mean) / (K.sqrt(variance + self.epsilon))
+        inputs = (inputs - mean) / (torch.sqrt(variance + self.epsilon))
 
         # prepare broadcast shape
-        inputs = K.reshape(inputs, group_shape)
+        inputs = torch.reshape(inputs, group_shape)
         outputs = inputs
 
         # In this case we must explicitly broadcast all parameters.
         if self.scale:
-            broadcast_gamma = K.reshape(self.gamma, broadcast_shape)
+            broadcast_gamma = torch.reshape(self.gamma, broadcast_shape)
             outputs = outputs * broadcast_gamma
 
         if self.center:
-            broadcast_beta = K.reshape(self.beta, broadcast_shape)
+            broadcast_beta = torch.reshape(self.beta, broadcast_shape)
             outputs = outputs + broadcast_beta
 
-        outputs = K.reshape(outputs, tensor_input_shape)
+        outputs = torch.reshape(outputs, input_shape)
 
         return outputs
 
-    # def get_config(self):
-    #     config = {
-    #         'groups': self.groups,
-    #         'axis': self.axis,
-    #         'epsilon': self.epsilon,
-    #         'center': self.center,
-    #         'scale': self.scale,
-    #         'beta_initializer': initializers.serialize(self.beta_initializer),
-    #         'gamma_initializer': initializers.serialize(self.gamma_initializer),
-    #         'beta_regularizer': regularizers.serialize(self.beta_regularizer),
-    #         'gamma_regularizer': regularizers.serialize(self.gamma_regularizer),
-    #         'beta_constraint': constraints.serialize(self.beta_constraint),
-    #         'gamma_constraint': constraints.serialize(self.gamma_constraint)
-    #     }
-    #     base_config = super(GroupNormalization, self).get_config()
-    #     return dict(list(base_config.items()) + list(config.items()))
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
-
-# get_custom_objects().update({'GroupNormalization': GroupNormalization})
+    #
+    # def compute_output_shape(self, input_shape):
+    #     return input_shape
 
 
 if __name__ == '__main__':
-    from keras.layers import Input
-    from keras.models import Model
-    ip = Input(shape=(None, None, 4))
+    channel_dim = 1
+    ip = torch.rand(128, 26, 52, 63, 53)  # (batch, c, H, W, D)
     #ip = Input(batch_shape=(100, None, None, 2))
-    x = GroupNormalization(groups=2, axis=-1, epsilon=0.1)(ip)
-    model = Model(ip, x)
-    model.summary()
+    x = GroupNormalization(input_shape=ip.shape, groups=2, axis=channel_dim, epsilon=0.1)(ip)
+    print(x.shape)
+
 
