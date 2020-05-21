@@ -1,7 +1,9 @@
 import torch.nn as nn
 
-from keras.engine import InputSpec
-from keras import initializers
+# from keras.engine import InputSpec # TODO: where the hell is used this? Outside class
+
+import torch.nn.init as initializers
+# from keras import initializers
 from keras import regularizers
 from keras import constraints
 from keras import backend as K
@@ -70,7 +72,7 @@ class GroupNormalization(nn.Module):
         self.epsilon = epsilon
         self.center = center
         self.scale = scale
-        self.beta_initializer = initializers.get(beta_initializer)
+        self.beta_initializer = initializers.
         self.gamma_initializer = initializers.get(gamma_initializer)
         self.beta_regularizer = regularizers.get(beta_regularizer)
         self.gamma_regularizer = regularizers.get(gamma_regularizer)
@@ -96,8 +98,8 @@ class GroupNormalization(nn.Module):
                              'multiple of the number of channels (' +
                              str(dim) + ').')
 
-        self.input_spec = InputSpec(ndim=len(input_shape),
-                                    axes={self.axis: dim})
+        # self.input_spec = InputSpec(ndim=len(input_shape),  # TODO: look where it is used
+        #                             axes={self.axis: dim})
         shape = (dim,)
 
         if self.scale:

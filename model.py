@@ -3,6 +3,10 @@
 # by Myronenko A. (https://arxiv.org/pdf/1810.11654.pdf)
 # Author of this code: Suyog Jadhav (https://github.com/IAmSUyogJadhav)
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 import keras.backend as K
 from keras.losses import mse
 from keras.layers import Conv3D, Activation, Add, UpSampling3D, Lambda, Dense
@@ -19,7 +23,7 @@ except ImportError:
     from group_norm import GroupNormalization
 
 
-def green_block(inp, filters, data_format='channels_first', name=None):
+def green_block(inp, filters, name=None):
     """
     green_block(inp, filters, name=None)
     ------------------------------------
@@ -28,16 +32,15 @@ def green_block(inp, filters, data_format='channels_first', name=None):
     units, with a residual connection from the input `inp` to the output. Used
     internally in the model. Can be used independently as well.
 
+    Note that images must come with dimensions "c, H, W, D"
+
     Parameters
     ----------
     `inp`: An keras.layers.layer instance, required
         The keras layer just preceding the green block.
-    `filters`: integer, required
+    `out_channels`: integer, required
         No. of filters to use in the 3D convolutional block. The output
         layer of this green block will have this many no. of channels.
-    `data_format`: string, optional
-        The format of the input data. Must be either 'chanels_first' or
-        'channels_last'. Defaults to `channels_first`, as used in the paper.
     `name`: string, optional
         The name to be given to this green block. Defaults to None, in which
         case, keras uses generated names for the involved layers. If a string
@@ -51,42 +54,38 @@ def green_block(inp, filters, data_format='channels_first', name=None):
         The output of the green block. Has no. of channels equal to `filters`.
         The size of the rest of the dimensions remains same as in `inp`.
     """
-    inp_res = Conv3D(
-        filters=filters,
+    inp_res = nn.Conv3d(
+        in_channels=None, # TODO: define in channels here
+        out_channels=filters,
         kernel_size=(1, 1, 1),
-        strides=1,
-        data_format=data_format,
-        name=f'Res_{name}' if name else None)(inp)
+        stride=1)(inp)
 
     # axis=1 for channels_first data format
     # No. of groups = 8, as given in the paper
     x = GroupNormalization(
         groups=8,
-        axis=1 if data_format == 'channels_first' else 0,
-        name=f'GroupNorm_1_{name}' if name else None)(inp)
-    x = Activation('relu', name=f'Relu_1_{name}' if name else None)(x)
-    x = Conv3D(
-        filters=filters,
+        axis=1)(inp)
+    x = F.relu(x)
+    x = nn.Conv3d(
+        in_channels=None,  # TODO: define in channels here
+        out_channels=filters,
         kernel_size=(3, 3, 3),
-        strides=1,
-        padding='same',
-        data_format=data_format,
-        name=f'Conv3D_1_{name}' if name else None)(x)
+        stride=1,
+        padding='same')(x)  # TODO: define same padding here
 
     x = GroupNormalization(
         groups=8,
-        axis=1 if data_format == 'channels_first' else 0,
-        name=f'GroupNorm_2_{name}' if name else None)(x)
-    x = Activation('relu', name=f'Relu_2_{name}' if name else None)(x)
-    x = Conv3D(
-        filters=filters,
+        axis=1)(x)
+    x = F.relu(x)
+    x = nn.Conv3d(
+        in_channels=None,  # TODO: define in channels here
+        out_channels=filters,
         kernel_size=(3, 3, 3),
         strides=1,
-        padding='same',
-        data_format=data_format,
-        name=f'Conv3D_2_{name}' if name else None)(x)
+        padding='same')(x)  # TODO: define same padding here
 
-    out = Add(name=f'Out_{name}' if name else None)([x, inp_res])
+    # out = Add(name=f'Out_{name}' if name else None)([x, inp_res])
+    out = torch.cat([x, inp_res], dim=0)  # TODO: understand which dimension must be concatenated
     return out
 
 
