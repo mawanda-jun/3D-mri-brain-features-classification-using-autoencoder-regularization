@@ -10,12 +10,9 @@ class GroupNormalization(torch.nn.Module):
     and its accuracy is stable in a wide range of batch sizes
 
     # Arguments
+        num_features: Integer, the number of incoming features (channels) to be normalized
         groups: Integer, the number of groups for Group Normalization.
-        axis: Integer, the axis that should be normalized
-            (typically the features axis).
-            For instance, after a `Conv2D` layer with
-            `data_format="channels_first"`,
-            set `axis=1` in `BatchNormalization`.
+        channel_first: Bool, tells the group the axis to be normalized is the first
         epsilon: Small float added to variance to avoid dividing by zero.
         center: If True, add offset of `beta` to normalized tensor.
             If False, `beta` is ignored.
@@ -44,10 +41,10 @@ class GroupNormalization(torch.nn.Module):
     """
 
     def __init__(self,
-                 input_shape,
+                 num_features,
                  groups=32,
-                 axis=-1,
                  epsilon=1e-5,
+                 channel_first=True,
                  center=True,
                  scale=True,
                  beta_initializer='zeros',
@@ -56,21 +53,14 @@ class GroupNormalization(torch.nn.Module):
         super().__init__()
         self.supports_masking = True
         self.groups = groups
-        self.axis = axis
+        self.axis = 1 if channel_first else -1
         self.epsilon = epsilon
         self.center = center
         self.scale = scale
-        self.input_shape = input_shape
         self.beta_initializer = beta_initializer
         self.gamma_initializer = gamma_initializer
 
-        dim = input_shape[self.axis]
-
-        if dim is None:
-            raise ValueError('Axis ' + str(self.axis) + ' of '
-                             'input tensor should have a defined dimension '
-                             'but the layer received an input with shape ' +
-                             str(input_shape) + '.')
+        dim = num_features
 
         if dim < self.groups:
             raise ValueError('Number of groups (' + str(self.groups) + ') cannot be '
@@ -154,10 +144,9 @@ class GroupNormalization(torch.nn.Module):
 
 
 if __name__ == '__main__':
-    channel_dim = 1
     ip = torch.rand(128, 26, 52, 63, 53)  # (batch, c, H, W, D)
     #ip = Input(batch_shape=(100, None, None, 2))
-    x = GroupNormalization(input_shape=ip.shape, groups=2, axis=channel_dim, epsilon=0.1)(ip)
+    x = GroupNormalization(num_features=26, groups=2, epsilon=0.1)(ip)
     print(x.shape)
 
 
