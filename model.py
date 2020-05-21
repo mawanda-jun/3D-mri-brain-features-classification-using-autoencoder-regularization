@@ -49,10 +49,13 @@ class GreenBlock(nn.Module):
         self.block = nn.Sequential(OrderedDict([
             ('group_norm0', GroupNormalization(num_features, groups=8, padding=0)),
             ('relu0', nn.ReLU(inplace=True)),
-            ('conv0', nn.Conv3d(in_channels=filters, out_channels=filters, kernel_size=3, stride=1, padding='same')),  # TODO: define padding size for "same"
+            ('conv0', nn.Conv3d(in_channels=filters, out_channels=filters, kernel_size=3, stride=1, padding='same')),
+            # TODO: define padding size for "same"
             ('group_norm1', GroupNormalization(filters, groups=8)),
             ('relu1', nn.ReLU(inplace=True)),
-            ('conv2', nn.Conv3d(in_channels=filters, out_channels=filters, kernel_size=(3, 3, 3), stride=1, padding='same')),  # TODO: define padding size for "same"
+            ('conv2',
+             nn.Conv3d(in_channels=filters, out_channels=filters, kernel_size=(3, 3, 3), stride=1, padding='same')),
+            # TODO: define padding size for "same"
         ]))
 
     def forward(self, inputs):
@@ -62,56 +65,59 @@ class GreenBlock(nn.Module):
 
 
 # def green_block(inp, filters, name=None):
-    # inp_res = nn.Conv3d(
-    #     in_channels=None,  # TODO: define in channels here
-    #     out_channels=filters,
-    #     kernel_size=(1, 1, 1),
-    #     stride=1)(inp)
+# inp_res = nn.Conv3d(
+#     in_channels=None,  # TODO: define in channels here
+#     out_channels=filters,
+#     kernel_size=(1, 1, 1),
+#     stride=1)(inp)
 
-    # axis=1 for channels_first data format
-    # No. of groups = 8, as given in the paper
-    # x = GroupNormalization(
-    #     groups=8,
-    #     axis=1)(inp)
-    # x = F.relu(x)
-    # x = nn.Conv3d(
-    #     in_channels=None,  # TODO: define in channels here
-    #     out_channels=filters,
-    #     kernel_size=(3, 3, 3),
-    #     stride=1,
-    #     padding='same')(x)  # TODO: define same padding here
-    #
-    # x = GroupNormalization(
-    #     groups=8,
-    #     axis=1)(x)
-    # # x = F.relu(x)
-    # x = nn.Conv3d(
-    #     in_channels=None,  # TODO: define in channels here
-    #     out_channels=filters,
-    #     kernel_size=(3, 3, 3),
-    #     strides=1,
-    #     padding='same')(x)  # TODO: define same padding here
+# axis=1 for channels_first data format
+# No. of groups = 8, as given in the paper
+# x = GroupNormalization(
+#     groups=8,
+#     axis=1)(inp)
+# x = F.relu(x)
+# x = nn.Conv3d(
+#     in_channels=None,  # TODO: define in channels here
+#     out_channels=filters,
+#     kernel_size=(3, 3, 3),
+#     stride=1,
+#     padding='same')(x)  # TODO: define same padding here
+#
+# x = GroupNormalization(
+#     groups=8,
+#     axis=1)(x)
+# # x = F.relu(x)
+# x = nn.Conv3d(
+#     in_channels=None,  # TODO: define in channels here
+#     out_channels=filters,
+#     kernel_size=(3, 3, 3),
+#     strides=1,
+#     padding='same')(x)  # TODO: define same padding here
 
-    # out = Add(name=f'Out_{name}' if name else None)([x, inp_res])
-    # out = torch.cat([x, inp_res], dim=0)  # TODO: understand which dimension must be concatenated
-    # return out
+# out = Add(name=f'Out_{name}' if name else None)([x, inp_res])
+# out = torch.cat([x, inp_res], dim=0)  # TODO: understand which dimension must be concatenated
+# return out
 
 
 # From keras-team/keras/blob/master/examples/variational_autoencoder.py
-
-def sampling(args):
+class Reparametrization(nn.Module):
     """Reparameterization trick by sampling from an isotropic unit Gaussian.
-    # Arguments
-        args (tensor): mean and log of variance of Q(z|X)
-    # Returns
-        z (tensor): sampled latent vector
-    """
-    z_mean, z_var = args
-    batch = z_mean.shape[0]
-    dim = z_mean.shape[1]
-    # by default, random_normal has mean = 0 and std = 1.0
-    epsilon = torch.empty((batch, dim)).normal_()
-    return z_mean + torch.exp(0.5 * z_var) * epsilon
+        # Arguments
+            args (tensor): mean and log of variance of Q(z|X)
+        # Returns
+            z (tensor): sampled latent vector
+        """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, z_mean, z_var):
+        batch = z_mean.shape[0]
+        dim = z_mean.shape[1]
+        # by default, random_normal has mean = 0 and std = 1.0
+        epsilon = torch.empty((batch, dim)).normal_()
+        return z_mean + torch.exp(0.5 * z_var) * epsilon
 
 
 class GTLoss(nn.Module):
@@ -136,6 +142,7 @@ class GTLoss(nn.Module):
         to calculate the dice loss.
 
     """
+
     def __init__(self, e):
         super().__init__()
         self.e = e
@@ -206,6 +213,58 @@ class VAELoss(nn.Module):
         return self.loss_VAE(target, output, z_var, z_mean)
 
 
+class BrainClassifierVAE(nn.Module):
+    def __init__(self, input_shape=(1, 52, 63, 53), num_classes=5, weight_L2=0.1, weight_KL=0.1):
+        super().__init__()
+        self.input_shape = input_shape
+        self.num_classes = num_classes
+        self.weight_L2 = weight_L2
+        self.weight_L2 = weight_KL
+
+        # ENCODING
+        self.encoder = nn.Sequential(OrderedDict([
+            ('conv0', nn.Conv3d(self.input_shape[0], out_channels=32, kernel_size=(3, 3, 3), stride=1, padding='same')),
+            # TODO: check for same padding here
+            ('sp_drop0', nn.Dropout3d(0.2)),
+            ('green0', GreenBlock(32)),
+            ('conv1', nn.Conv3d(in_channels=32, out_channels=32, kernel_size=(3, 3, 3), stride=2, padding='same')),
+            # TODO: check for padding same
+            ('green1', GreenBlock(64)),
+            ('green2', GreenBlock(64)),
+            ('conv2', nn.Conv3d(in_channels=32, out_channels=64, kernel_size=(3, 3, 3), stride=2, padding='same')),
+            # TODO: check for padding same
+            ('green3', GreenBlock(128)),
+            ('green4', GreenBlock(128)),
+            ('conv3', nn.Conv3d(in_channels=64, out_channels=128, kernel_size=(3, 3, 3), stride=2, padding='same')),
+            # TODO: check for padding same
+            ('green5', GreenBlock(256)),
+            ('green6', GreenBlock(256)),
+            ('green7', GreenBlock(256)),
+            ('green8', GreenBlock(256)),
+        ]))
+
+        # DIMENSIONALITY REDUCTION
+        self.dim_reduction = nn.Sequential(OrderedDict([
+            ('group_norm', GroupNormalization(256, groups=8)),
+            ('relu0', nn.ReLU(inplace=True)),
+            ('conv0', nn.Conv3d(in_channels=256, out_channels=16, kernel_size=(3, 3, 3), stride=2, padding='same')),
+            # TODO: check for passing same
+        ]))
+
+        # REPARAMETERIZATION TRICK (needs flattening)
+        self.out_linear = nn.Linear(in_features=1000, out_features=256)
+        self.z_mean = nn.Linear(in_features=256, out_features=128)
+        self.z_var = nn.Linear(in_features=256, out_features=128)
+        self.reparameterization = Reparametrization()
+
+        # DECODER
+        
+
+        # REGRESSOR
+        self.regressor = nn.Linear(in_features=256, out_features=num_classes)
+
+
+
 def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1, weight_KL=0.1, dice_e=1e-8):
     """
     build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1, weight_KL=0.1)
@@ -250,145 +309,145 @@ def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1
     ## Input Layer
     inp = Input(input_shape)
 
-    ## The Initial Block
-    x = Conv3D(
-        filters=32,
-        kernel_size=(3, 3, 3),
-        strides=1,
-        padding='same',
-        data_format='channels_first',
-        name='Input_x1')(inp)
-
-    ## Dropout (0.2)
-    x = SpatialDropout3D(0.2, data_format='channels_first')(x)
+    # ## The Initial Block
+    # x = Conv3D(
+    #     filters=32,
+    #     kernel_size=(3, 3, 3),
+    #     strides=1,
+    #     padding='same',
+    #     data_format='channels_first',
+    #     name='Input_x1')(inp)
+    #
+    # ## Dropout (0.2)
+    # x = SpatialDropout3D(0.2, data_format='channels_first')(x)
 
     ## Green Block x1 (output filters = 32)
-    x1 = green_block(x, 32, name='x1')
-    x = Conv3D(
-        filters=32,
-        kernel_size=(3, 3, 3),
-        strides=2,
-        padding='same',
-        data_format='channels_first',
-        name='Enc_DownSample_32')(x1)
+    # x1 = green_block(x, 32, name='x1')
+    # x = Conv3D(
+    #     filters=32,
+    #     kernel_size=(3, 3, 3),
+    #     strides=2,
+    #     padding='same',
+    #     data_format='channels_first',
+    #     name='Enc_DownSample_32')(x1)
 
-    ## Green Block x2 (output filters = 64)
-    x = green_block(x, 64, name='Enc_64_1')
-    x2 = green_block(x, 64, name='x2')
-    x = Conv3D(
-        filters=64,
-        kernel_size=(3, 3, 3),
-        strides=2,
-        padding='same',
-        data_format='channels_first',
-        name='Enc_DownSample_64')(x2)
+    # ## Green Block x2 (output filters = 64)
+    # x = green_block(x, 64, name='Enc_64_1')
+    # x2 = green_block(x, 64, name='x2')
+    # x = Conv3D(
+    #     filters=64,
+    #     kernel_size=(3, 3, 3),
+    #     strides=2,
+    #     padding='same',
+    #     data_format='channels_first',
+    #     name='Enc_DownSample_64')(x2)
 
     ## Green Blocks x2 (output filters = 128)
-    x = green_block(x, 128, name='Enc_128_1')
-    x3 = green_block(x, 128, name='x3')
-    x = Conv3D(
-        filters=128,
-        kernel_size=(3, 3, 3),
-        strides=2,
-        padding='same',
-        data_format='channels_first',
-        name='Enc_DownSample_128')(x3)
+    # x = green_block(x, 128, name='Enc_128_1')
+    # x3 = green_block(x, 128, name='x3')
+    # x = Conv3D(
+    #     filters=128,
+    #     kernel_size=(3, 3, 3),
+    #     strides=2,
+    #     padding='same',
+    #     data_format='channels_first',
+    #     name='Enc_DownSample_128')(x3)
 
     ## Green Blocks x4 (output filters = 256)
-    x = green_block(x, 256, name='Enc_256_1')
-    x = green_block(x, 256, name='Enc_256_2')
-    x = green_block(x, 256, name='Enc_256_3')
-    x4 = green_block(x, 256, name='x4')
+    # x = green_block(x, 256, name='Enc_256_1')
+    # x = green_block(x, 256, name='Enc_256_2')
+    # x = green_block(x, 256, name='Enc_256_3')
+    # x4 = green_block(x, 256, name='x4')
 
     # -------------------------------------------------------------------------
     # Decoder
     # -------------------------------------------------------------------------
 
-    ## GT (Groud Truth) Part
-    # -------------------------------------------------------------------------
-
-    ### Green Block x1 (output filters=128)
-    x = Conv3D(
-        filters=128,
-        kernel_size=(1, 1, 1),
-        strides=1,
-        data_format='channels_first',
-        name='Dec_GT_ReduceDepth_128')(x4)
-    x = UpSampling3D(
-        size=2,
-        data_format='channels_first',
-        name='Dec_GT_UpSample_128')(x)
-    x = Add(name='Input_Dec_GT_128')([x, x3])
-    x = green_block(x, 128, name='Dec_GT_128')
-
-    ### Green Block x1 (output filters=64)
-    x = Conv3D(
-        filters=64,
-        kernel_size=(1, 1, 1),
-        strides=1,
-        data_format='channels_first',
-        name='Dec_GT_ReduceDepth_64')(x)
-    x = UpSampling3D(
-        size=2,
-        data_format='channels_first',
-        name='Dec_GT_UpSample_64')(x)
-    x = Add(name='Input_Dec_GT_64')([x, x2])
-    x = green_block(x, 64, name='Dec_GT_64')
-
-    ### Green Block x1 (output filters=32)
-    x = Conv3D(
-        filters=32,
-        kernel_size=(1, 1, 1),
-        strides=1,
-        data_format='channels_first',
-        name='Dec_GT_ReduceDepth_32')(x)
-    x = UpSampling3D(
-        size=2,
-        data_format='channels_first',
-        name='Dec_GT_UpSample_32')(x)
-    x = Add(name='Input_Dec_GT_32')([x, x1])
-    x = green_block(x, 32, name='Dec_GT_32')
-
-    ### Blue Block x1 (output filters=32)
-    x = Conv3D(
-        filters=32,
-        kernel_size=(3, 3, 3),
-        strides=1,
-        padding='same',
-        data_format='channels_first',
-        name='Input_Dec_GT_Output')(x)
-
-    ### Output Block
-    out_GT = Conv3D(
-        filters=output_channels,  # No. of tumor classes is 3
-        kernel_size=(1, 1, 1),
-        strides=1,
-        data_format='channels_first',
-        activation='sigmoid',
-        name='Dec_GT_Output')(x)
-
+    # ## GT (Groud Truth) Part
+    # # -------------------------------------------------------------------------
+    #
+    # ### Green Block x1 (output filters=128)
+    # x = Conv3D(
+    #     filters=128,
+    #     kernel_size=(1, 1, 1),
+    #     strides=1,
+    #     data_format='channels_first',
+    #     name='Dec_GT_ReduceDepth_128')(x4)
+    # x = UpSampling3D(
+    #     size=2,
+    #     data_format='channels_first',
+    #     name='Dec_GT_UpSample_128')(x)
+    # x = Add(name='Input_Dec_GT_128')([x, x3])
+    # x = green_block(x, 128, name='Dec_GT_128')
+    #
+    # ### Green Block x1 (output filters=64)
+    # x = Conv3D(
+    #     filters=64,
+    #     kernel_size=(1, 1, 1),
+    #     strides=1,
+    #     data_format='channels_first',
+    #     name='Dec_GT_ReduceDepth_64')(x)
+    # x = UpSampling3D(
+    #     size=2,
+    #     data_format='channels_first',
+    #     name='Dec_GT_UpSample_64')(x)
+    # x = Add(name='Input_Dec_GT_64')([x, x2])
+    # x = green_block(x, 64, name='Dec_GT_64')
+    #
+    # ### Green Block x1 (output filters=32)
+    # x = Conv3D(
+    #     filters=32,
+    #     kernel_size=(1, 1, 1),
+    #     strides=1,
+    #     data_format='channels_first',
+    #     name='Dec_GT_ReduceDepth_32')(x)
+    # x = UpSampling3D(
+    #     size=2,
+    #     data_format='channels_first',
+    #     name='Dec_GT_UpSample_32')(x)
+    # x = Add(name='Input_Dec_GT_32')([x, x1])
+    # x = green_block(x, 32, name='Dec_GT_32')
+    #
+    # ### Blue Block x1 (output filters=32)
+    # x = Conv3D(
+    #     filters=32,
+    #     kernel_size=(3, 3, 3),
+    #     strides=1,
+    #     padding='same',
+    #     data_format='channels_first',
+    #     name='Input_Dec_GT_Output')(x)
+    #
+    # ### Output Block
+    # out_GT = Conv3D(
+    #     filters=output_channels,  # No. of tumor classes is 3
+    #     kernel_size=(1, 1, 1),
+    #     strides=1,
+    #     data_format='channels_first',
+    #     activation='sigmoid',
+    #     name='Dec_GT_Output')(x)
+    pass
     ## VAE (Variational Auto Encoder) Part
     # -------------------------------------------------------------------------
 
     ### VD Block (Reducing dimensionality of the data)
-    x = GroupNormalization(groups=8, axis=1, name='Dec_VAE_VD_GN')(x4)
-    x = Activation('relu', name='Dec_VAE_VD_relu')(x)
-    x = Conv3D(
-        filters=16,
-        kernel_size=(3, 3, 3),
-        strides=2,
-        padding='same',
-        data_format='channels_first',
-        name='Dec_VAE_VD_Conv3D')(x)
-
+    # x = GroupNormalization(groups=8, axis=1, name='Dec_VAE_VD_GN')(x4)
+    # x = Activation('relu', name='Dec_VAE_VD_relu')(x)
+    # x = Conv3D(
+    #     filters=16,
+    #     kernel_size=(3, 3, 3),
+    #     strides=2,
+    #     padding='same',
+    #     data_format='channels_first',
+    #     name='Dec_VAE_VD_Conv3D')(x)
+    #
     # Not mentioned in the paper, but the author used a Flattening layer here.
-    x = Flatten(name='Dec_VAE_VD_Flatten')(x)
-    x = Dense(256, name='Dec_VAE_VD_Dense')(x)
-
-    ### VDraw Block (Sampling)
-    z_mean = Dense(128, name='Dec_VAE_VDraw_Mean')(x)
-    z_var = Dense(128, name='Dec_VAE_VDraw_Var')(x)
-    x = Lambda(sampling, name='Dec_VAE_VDraw_Sampling')([z_mean, z_var])
+    # x = Flatten(name='Dec_VAE_VD_Flatten')(x)
+    # x = Dense(256, name='Dec_VAE_VD_Dense')(x)
+    #
+    # ### VDraw Block (Sampling)
+    # z_mean = Dense(128, name='Dec_VAE_VDraw_Mean')(x)
+    # z_var = Dense(128, name='Dec_VAE_VDraw_Var')(x)
+    # x = Lambda(sampling, name='Dec_VAE_VDraw_Sampling')([z_mean, z_var])
 
     ### VU Block (Upsizing back to a depth of 256)
     x = Dense((c // 4) * (H // 16) * (W // 16) * (D // 16))(x)
