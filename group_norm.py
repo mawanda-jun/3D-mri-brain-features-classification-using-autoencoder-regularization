@@ -144,9 +144,9 @@ class GroupNormalization(torch.nn.Module):
 
 
 if __name__ == '__main__':
-    ip = torch.rand(128, 26, 52, 63, 53)  # (batch, c, H, W, D)
+    ip = torch.rand(128, 1, 48, 48, 48)  # (batch, c, H, W, D)
     #ip = Input(batch_shape=(100, None, None, 2))
-    x = GroupNormalization(num_features=26, groups=2, epsilon=0.1)(ip)
+    x = GroupNormalization(num_features=1, groups=1, epsilon=0.1)(ip)
     print(x.shape)
 
 
