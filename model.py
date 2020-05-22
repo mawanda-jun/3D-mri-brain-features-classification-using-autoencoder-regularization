@@ -2,14 +2,13 @@
 # 3D MRI Brain Tumor Segmentation Using Autoencoder Regularization
 # by Myronenko A. (https://arxiv.org/pdf/1810.11654.pdf)
 # Author of this code: Suyog Jadhav (https://github.com/IAmSUyogJadhav)
+from blocks import *
+from utils import *
 
 import torch
 import torch.nn as nn
-
 from collections import OrderedDict
 from group_norm import GroupNormalization
-from utils import *
-from blocks import *
 
 
 class Encoder(nn.Sequential):
@@ -92,10 +91,11 @@ class VAERegularization(nn.Module):
         self.reparameterization = Reparametrization()
 
     def forward(self, inputs):
-        rd = self.reduce_dimension(inputs)
-        fc = self.out_linear(rd.view(rd.shape[0], -1))
-        z_mean = self.z_mean(fc)
-        z_var = self.z_var(fc)
+        x = self.reduce_dimension(inputs)
+        x = self.out_linear(x.view(x.shape[0], -1))
+        z_mean = self.z_mean(x)
+        z_var = self.z_var(x)
+        del x
         return self.reparameterization(z_mean, z_var), z_mean, z_var
 
 
@@ -155,286 +155,47 @@ class BrainClassifierVAE(nn.Module):
 
         # CLASSIFICATION
         self.classifier = Classifier(in_features=256, num_features=num_features, input_side_dim=6)
-        pass
 
     def forward(self, inputs):
         encoded = self.encoder(inputs)
         out_features = self.classifier(encoded)
         int_repr, z_mean, z_var = self.internal_representation(encoded)
+        del encoded
         reconstructed_image = self.decoder(int_repr)
         return out_features, reconstructed_image, z_mean, z_var
 
 
-# def build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1, weight_KL=0.1, dice_e=1e-8):
-#     """
-#     build_model(input_shape=(4, 160, 192, 128), output_channels=3, weight_L2=0.1, weight_KL=0.1)
-#     -------------------------------------------
-#     Creates the model used in the BRATS2018 winning solution
-#     by Myronenko A. (https://arxiv.org/pdf/1810.11654.pdf)
-#
-#     Parameters
-#     ----------
-#     `input_shape`: A 4-tuple, optional.
-#         Shape of the input image. Must be a 4D image of shape (c, H, W, D),
-#         where, each of H, W and D are divisible by 2^4, and c is divisible by 4.
-#         Defaults to the crop size used in the paper, i.e., (4, 160, 192, 128).
-#     `output_channels`: An integer, optional.
-#         The no. of channels in the output. Defaults to 3 (BraTS 2018 format).
-#     `weight_L2`: A real number, optional
-#         The weight to be given to the L2 loss term in the loss function. Adjust to get best
-#         results for your task. Defaults to 0.1.
-#     `weight_KL`: A real number, optional
-#         The weight to be given to the KL loss term in the loss function. Adjust to get best
-#         results for your task. Defaults to 0.1.
-#     `dice_e`: Float, optional
-#         A small epsilon term to add in the denominator of dice loss to avoid dividing by
-#         zero and possible gradient explosion. This argument will be passed to loss_gt function.
-#
-#
-#     Returns
-#     -------
-#     `model`: A keras.models.Model instance
-#         The created model.
-#     """
-#     c, H, W, D = input_shape
-#     assert len(input_shape) == 4, "Input shape must be a 4-tuple"
-#     assert (c % 4) == 0, "The no. of channels must be divisible by 4"
-#     assert (H % 16) == 0 and (W % 16) == 0 and (D % 16) == 0, \
-#         "All the input dimensions must be divisible by 16"
-#
-#     # -------------------------------------------------------------------------
-#     # Encoder
-#     # -------------------------------------------------------------------------
-#
-#     ## Input Layer
-#     inp = Input(input_shape)
-#
-#     # ## The Initial Block
-#     # x = Conv3D(
-#     #     filters=32,
-#     #     kernel_size=(3, 3, 3),
-#     #     strides=1,
-#     #     padding='same',
-#     #     data_format='channels_first',
-#     #     name='Input_x1')(inp)
-#     #
-#     # ## Dropout (0.2)
-#     # x = SpatialDropout3D(0.2, data_format='channels_first')(x)
-#
-#     ## Green Block x1 (output filters = 32)
-#     # x1 = green_block(x, 32, name='x1')
-#     # x = Conv3D(
-#     #     filters=32,
-#     #     kernel_size=(3, 3, 3),
-#     #     strides=2,
-#     #     padding='same',
-#     #     data_format='channels_first',
-#     #     name='Enc_DownSample_32')(x1)
-#
-#     # ## Green Block x2 (output filters = 64)
-#     # x = green_block(x, 64, name='Enc_64_1')
-#     # x2 = green_block(x, 64, name='x2')
-#     # x = Conv3D(
-#     #     filters=64,
-#     #     kernel_size=(3, 3, 3),
-#     #     strides=2,
-#     #     padding='same',
-#     #     data_format='channels_first',
-#     #     name='Enc_DownSample_64')(x2)
-#
-#     ## Green Blocks x2 (output filters = 128)
-#     # x = green_block(x, 128, name='Enc_128_1')
-#     # x3 = green_block(x, 128, name='x3')
-#     # x = Conv3D(
-#     #     filters=128,
-#     #     kernel_size=(3, 3, 3),
-#     #     strides=2,
-#     #     padding='same',
-#     #     data_format='channels_first',
-#     #     name='Enc_DownSample_128')(x3)
-#
-#     ## Green Blocks x4 (output filters = 256)
-#     # x = green_block(x, 256, name='Enc_256_1')
-#     # x = green_block(x, 256, name='Enc_256_2')
-#     # x = green_block(x, 256, name='Enc_256_3')
-#     # x4 = green_block(x, 256, name='x4')
-#
-#     # -------------------------------------------------------------------------
-#     # Decoder
-#     # -------------------------------------------------------------------------
-#
-#     ## GT (Groud Truth) Part
-#     # -------------------------------------------------------------------------
-#
-#     ### Green Block x1 (output filters=128)
-#     # x = Conv3D(
-#     #     filters=128,
-#     #     kernel_size=(1, 1, 1),
-#     #     strides=1,
-#     #     data_format='channels_first',
-#     #     name='Dec_GT_ReduceDepth_128')(x4)
-#     # x = UpSampling3D(
-#     #     size=2,
-#     #     data_format='channels_first',
-#     #     name='Dec_GT_UpSample_128')(x)
-#     # x = Add(name='Input_Dec_GT_128')([x, x3])
-#     # x = green_block(x, 128, name='Dec_GT_128')
-#
-#     ### Green Block x1 (output filters=64)
-#     # x = Conv3D(
-#     #     filters=64,
-#     #     kernel_size=(1, 1, 1),
-#     #     strides=1,
-#     #     data_format='channels_first',
-#     #     name='Dec_GT_ReduceDepth_64')(x)
-#     # x = UpSampling3D(
-#     #     size=2,
-#     #     data_format='channels_first',
-#     #     name='Dec_GT_UpSample_64')(x)
-#     # x = Add(name='Input_Dec_GT_64')([x, x2])
-#     # x = green_block(x, 64, name='Dec_GT_64')
-#
-#     ### Green Block x1 (output filters=32)
-#     # x = Conv3D(
-#     #     filters=32,
-#     #     kernel_size=(1, 1, 1),
-#     #     strides=1,
-#     #     data_format='channels_first',
-#     #     name='Dec_GT_ReduceDepth_32')(x)
-#     # x = UpSampling3D(
-#     #     size=2,
-#     #     data_format='channels_first',
-#     #     name='Dec_GT_UpSample_32')(x)
-#     # x = Add(name='Input_Dec_GT_32')([x, x1])
-#     # x = green_block(x, 32, name='Dec_GT_32')
-#
-#     ### Blue Block x1 (output filters=32)
-#     # x = Conv3D(
-#     #     filters=32,
-#     #     kernel_size=(3, 3, 3),
-#     #     strides=1,
-#     #     padding='same',
-#     #     data_format='channels_first',
-#     #     name='Input_Dec_GT_Output')(x)
-#
-#     ### Output Block
-#     # out_GT = Conv3D(
-#     #     filters=output_channels,  # No. of tumor classes is 3
-#     #     kernel_size=(1, 1, 1),
-#     #     strides=1,
-#     #     data_format='channels_first',
-#     #     activation='sigmoid',
-#     #     name='Dec_GT_Output')(x)
-#     pass
-#     ## VAE (Variational Auto Encoder) Part
-#     # -------------------------------------------------------------------------
-#
-#     ### VD Block (Reducing dimensionality of the data)
-#     # x = GroupNormalization(groups=8, axis=1, name='Dec_VAE_VD_GN')(x4)
-#     # x = Activation('relu', name='Dec_VAE_VD_relu')(x)
-#     # x = Conv3D(
-#     #     filters=16,
-#     #     kernel_size=(3, 3, 3),
-#     #     strides=2,
-#     #     padding='same',
-#     #     data_format='channels_first',
-#     #     name='Dec_VAE_VD_Conv3D')(x)
-#     #
-#     # Not mentioned in the paper, but the author used a Flattening layer here.
-#     # x = Flatten(name='Dec_VAE_VD_Flatten')(x)
-#     # x = Dense(256, name='Dec_VAE_VD_Dense')(x)
-#     #
-#     # ### VDraw Block (Sampling)
-#     # z_mean = Dense(128, name='Dec_VAE_VDraw_Mean')(x)
-#     # z_var = Dense(128, name='Dec_VAE_VDraw_Var')(x)
-#     # x = Lambda(sampling, name='Dec_VAE_VDraw_Sampling')([z_mean, z_var])
-#
-#     ### VU Block (Upsizing back to a depth of 256)
-#     # x = Dense((c // 4) * (H // 16) * (W // 16) * (D // 16))(x)
-#     # x = Activation('relu')(x)
-#     # x = Reshape(((c // 4), (H // 16), (W // 16), (D // 16)))(x)
-#     # x = Conv3D(
-#     #     filters=256,
-#     #     kernel_size=(1, 1, 1),
-#     #     strides=1,
-#     #     data_format='channels_first',
-#     #     name='Dec_VAE_ReduceDepth_256')(x)
-#     # x = UpSampling3D(
-#     #     size=2,
-#     #     data_format='channels_first',
-#     #     name='Dec_VAE_UpSample_256')(x)
-#
-#     ### Green Block x1 (output filters=128)
-#     # x = Conv3D(
-#     #     filters=128,
-#     #     kernel_size=(1, 1, 1),
-#     #     strides=1,
-#     #     data_format='channels_first',
-#     #     name='Dec_VAE_ReduceDepth_128')(x)
-#     # x = UpSampling3D(
-#     #     size=2,
-#     #     data_format='channels_first',
-#     #     name='Dec_VAE_UpSample_128')(x)
-#     # x = green_block(x, 128, name='Dec_VAE_128')
-#
-#     ### Green Block x1 (output filters=64)
-#     # x = Conv3D(
-#     #     filters=64,
-#     #     kernel_size=(1, 1, 1),
-#     #     strides=1,
-#     #     data_format='channels_first',
-#     #     name='Dec_VAE_ReduceDepth_64')(x)
-#     # x = UpSampling3D(
-#     #     size=2,
-#     #     data_format='channels_first',
-#     #     name='Dec_VAE_UpSample_64')(x)
-#     # x = green_block(x, 64, name='Dec_VAE_64')
-#
-#     ### Green Block x1 (output filters=32)
-#     # x = Conv3D(
-#     #     filters=32,
-#     #     kernel_size=(1, 1, 1),
-#     #     strides=1,
-#     #     data_format='channels_first',
-#     #     name='Dec_VAE_ReduceDepth_32')(x)
-#     # x = UpSampling3D(
-#     #     size=2,
-#     #     data_format='channels_first',
-#     #     name='Dec_VAE_UpSample_32')(x)
-#     # x = green_block(x, 32, name='Dec_VAE_32')
-#
-#     ### Blue Block x1 (output filters=32)
-#     # x = Conv3D(
-#     #     filters=32,
-#     #     kernel_size=(3, 3, 3),
-#     #     strides=1,
-#     #     padding='same',
-#     #     data_format='channels_first',
-#     #     name='Input_Dec_VAE_Output')(x)
-#     #
-#     # ### Output Block
-#     # out_VAE = Conv3D(
-#     #     filters=4,
-#     #     kernel_size=(1, 1, 1),
-#     #     strides=1,
-#     #     data_format='channels_first',
-#     #     name='Dec_VAE_Output')(x)
-#
-#     # Build and Compile the model
-#     out = out_GT
-#     model = Model(inp, outputs=[out, out_VAE])  # Create the model
-#     model.compile(
-#         adam(lr=1e-4),
-#         [loss_gt(dice_e), loss_VAE(input_shape, z_mean, z_var, weight_L2=weight_L2, weight_KL=weight_KL)],
-#         metrics=[dice_coefficient]
-#     )
-#
-#     return model
-
 if __name__ == '__main__':
-    bigboi = BrainClassifierVAE(input_shape=(1, 48, 48, 48), num_features=16)
-    input = torch.rand((10, 1, 48, 48, 48))
+    from losses import VAELoss
+
+    bigboi = BrainClassifierVAE(input_shape=(1, 48, 48, 48), num_features=16).cuda()
+
+    input = torch.rand((15, 1, 48, 48, 48)).cuda()
+    target = torch.rand((15, 16)).cuda()
+
     out_features, reconstructed_image, z_mean, z_var = bigboi(input)
+
+    lr = 1e-4
+    weight_L2 = 0.1
+    weight_KL = 0.1
+    dice_e = 1e-8
+
+    optim = torch.optim.AdamW(bigboi.parameters(), lr=1e-4)
+    # Loss for features
+    loss_mse = torch.nn.MSELoss()
+    loss_mse_v = loss_mse(target, out_features)
+
+    # Loss for VAE
+    loss_vae = VAELoss(
+        weight_KL=weight_KL,
+        weight_L2=weight_L2
+    )
+
+    loss_vae_v = loss_vae(input, reconstructed_image, z_mean, z_var)
+
+    print('loss_gt: {}'.format(loss_mse_v))
+    print('loss_vae: {}'.format(loss_vae_v))
+
     print("features shape: {}".format(out_features.shape))
     print("reconstructed shape: {}".format(reconstructed_image.shape))
     print("z_mean: {} and z_var shapes: {}".format(z_mean.shape, z_var.shape))

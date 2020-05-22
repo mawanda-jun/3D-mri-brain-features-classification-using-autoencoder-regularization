@@ -75,7 +75,7 @@ class GroupNormalization(torch.nn.Module):
         shape = (dim,)
 
         if self.scale:
-            self.beta = torch.empty(shape, requires_grad=True)
+            self.beta = torch.nn.Parameter(torch.empty(shape), requires_grad=True)
             if self.beta_initializer == 'zeros':
                 self.beta = initializers.zeros_(self.beta)
             else:
@@ -83,7 +83,7 @@ class GroupNormalization(torch.nn.Module):
         else:
             self.beta = None
         if self.center:
-            self.gamma = torch.empty(shape, requires_grad=True)
+            self.gamma = torch.nn.Parameter(torch.empty(shape), requires_grad=True)
             if self.gamma_initializer == 'ones':
                 self.gamma = initializers.ones_(self.gamma)
             else:
@@ -98,15 +98,16 @@ class GroupNormalization(torch.nn.Module):
 
         # Prepare broadcasting shape.
         reduction_axes = list(range(len(input_shape)))
-        del reduction_axes[self.axis]
+        reduction_axes = reduction_axes[0:self.axis] + reduction_axes[self.axis + 1:]
         broadcast_shape = [1] * len(input_shape)
         broadcast_shape[self.axis] = input_shape[self.axis] // self.groups
-        broadcast_shape.insert(1, self.groups)
+        broadcast_shape = broadcast_shape[0:1] + [self.groups] + broadcast_shape[1:]  # Prepare broadcast shape in position 1
 
         reshape_group_shape = inputs.shape
         group_axes = [reshape_group_shape[i] for i in range(len(input_shape))]
         group_axes[self.axis] = input_shape[self.axis] // self.groups
-        group_axes.insert(1, self.groups)
+        group_axes = group_axes[0:1] + [self.groups] + group_axes[1:]
+        # group_axes.insert(1, self.groups)
 
         # reshape inputs to new group shape
         group_shape = [group_axes[0], self.groups] + group_axes[2:]
@@ -144,9 +145,9 @@ class GroupNormalization(torch.nn.Module):
 
 
 if __name__ == '__main__':
-    ip = torch.rand(128, 1, 48, 48, 48)  # (batch, c, H, W, D)
+    ip = torch.rand(128, 4, 48, 48, 48)  # (batch, c, H, W, D)
     #ip = Input(batch_shape=(100, None, None, 2))
-    x = GroupNormalization(num_features=1, groups=1, epsilon=0.1)(ip)
+    x = GroupNormalization(num_features=4, groups=2, epsilon=0.1)(ip)
     print(x.shape)
 
 

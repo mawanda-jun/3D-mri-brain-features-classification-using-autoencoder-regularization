@@ -38,7 +38,7 @@ class GTLoss(nn.Module):
 
 
 class VAELoss(nn.Module):
-    def __init__(self, input_shape, weight_L2=0.1, weight_KL=0.1):
+    def __init__(self, weight_L2=0.1, weight_KL=0.1):
         super().__init__()
         """
         loss_VAE(input_shape, z_mean, z_var, weight_L2=0.1, weight_KL=0.1)
@@ -76,15 +76,17 @@ class VAELoss(nn.Module):
             to calculate the L2 and KL loss.
             
         """
-        c, H, W, D = input_shape
-        self.N = c * H * W * D
+        # c, H, W, D = input_shape
+        # self.N = c * H * W * D
         self.weight_KL = weight_KL
         self.weight_L2 = weight_L2
 
-    def loss(self, y_true, y_pred, z_var, z_mean):
-        loss_L2 = torch.mean(torch.square(y_true - y_pred), dim=(1, 2, 3, 4))  # original axis value is (1,2,3,4).
+    def loss(self, y_true, y_pred, z_mean, z_var):
+        # loss_L2 = torch.mean(torch.square(y_true - y_pred), dim=(1, 2, 3, 4))  # original axis value is (1,2,3,4).
+        loss_L2 = torch.nn.functional.mse_loss(y_pred, y_true)  # original axis value is (1,2,3,4).
 
-        loss_KL = (1 / self.N) * torch.sum(torch.exp(z_var) + torch.square(z_mean) - 1. - z_var, dim=-1)
+        # loss_KL = (1 / self.N) * torch.sum(torch.exp(z_var) + torch.square(z_mean) - 1. - z_var, dim=-1)
+        loss_KL = 0.5 * torch.sum(torch.exp(z_var) + z_mean**2 - 1. - z_var)
 
         return self.weight_L2 * loss_L2 + self.weight_KL * loss_KL
 

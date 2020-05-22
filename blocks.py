@@ -4,6 +4,8 @@ from utils import *
 from group_norm import GroupNormalization
 from collections import OrderedDict
 
+# DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 
 class GreenBlock(nn.Module):
     def __init__(self, in_channels, out_channels, input_side_dim):
@@ -69,7 +71,7 @@ class Reparametrization(nn.Module):
         batch = z_mean.shape[0]
         dim = z_mean.shape[1]
         # by default, random_normal has mean = 0 and std = 1.0
-        epsilon = torch.empty((batch, dim)).normal_()
+        epsilon = torch.empty((batch, dim), device=z_mean.device).normal_()
         return z_mean + torch.exp(0.5 * z_var) * epsilon
 
 
