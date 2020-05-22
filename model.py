@@ -168,12 +168,10 @@ class BrainClassifierVAE(nn.Module):
 if __name__ == '__main__':
     from losses import VAELoss
 
-    bigboi = BrainClassifierVAE(input_shape=(1, 48, 48, 48), num_features=16).cuda()
+    bigboi = BrainClassifierVAE(input_shape=(53, 48, 48, 48), num_features=8).cuda()
 
-    input = torch.rand((15, 1, 48, 48, 48)).cuda()
-    target = torch.rand((15, 16)).cuda()
-
-    out_features, reconstructed_image, z_mean, z_var = bigboi(input)
+    input = torch.rand((10, 53, 48, 48, 48)).cuda()
+    target = torch.rand((10, 8)).cuda()
 
     lr = 1e-4
     weight_L2 = 0.1
@@ -183,18 +181,19 @@ if __name__ == '__main__':
     optim = torch.optim.AdamW(bigboi.parameters(), lr=1e-4)
     # Loss for features
     loss_mse = torch.nn.MSELoss()
-    loss_mse_v = loss_mse(target, out_features)
-
     # Loss for VAE
     loss_vae = VAELoss(
         weight_KL=weight_KL,
         weight_L2=weight_L2
     )
 
+    out_features, reconstructed_image, z_mean, z_var = bigboi(input)
+    loss_mse_v = loss_mse(target, out_features)
     loss_vae_v = loss_vae(input, reconstructed_image, z_mean, z_var)
+    loss = loss_mse_v + loss_vae_v
+    loss.backward()
 
-    print('loss_gt: {}'.format(loss_mse_v))
-    print('loss_vae: {}'.format(loss_vae_v))
+    print('loss: {}'.format(loss.item()))
 
     print("features shape: {}".format(out_features.shape))
     print("reconstructed shape: {}".format(reconstructed_image.shape))
