@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from utils import *
-from group_norm import GroupNormalization
+# from group_norm import GroupNormalization
 from collections import OrderedDict
 
 # DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -40,11 +40,13 @@ class GreenBlock(nn.Module):
         next_padding = calc_same_padding(out_dim, 3, 1)
         # Define block
         self.block = nn.Sequential(OrderedDict([
-            ('group_norm0', GroupNormalization(in_channels, groups=8, padding=0)),
+            # ('group_norm0', GroupNormalization(in_channels, groups=8, padding=0)),
+            ('norm0', nn.BatchNorm3d(num_features=in_channels)),
             ('relu0', nn.ReLU(inplace=True)),
-            ('conv0', nn.Conv3d(in_channels,out_channels, kernel_size=3, stride=1, padding=next_padding)),
+            ('conv0', nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=1, padding=next_padding)),
             # Since padding is "same" we can keep the same padding value for the next convolution
-            ('group_norm1', GroupNormalization(out_channels, groups=8)),
+            # ('group_norm1', GroupNormalization(out_channels, groups=8)),
+            ('norm1', nn.BatchNorm3d(num_features=out_channels)),
             ('relu1', nn.ReLU(inplace=True)),
             ('conv2', nn.Conv3d(out_channels, out_channels, kernel_size=3, stride=1, padding=next_padding)),
         ]))
@@ -68,11 +70,13 @@ class Reparametrization(nn.Module):
         super(Reparametrization, self).__init__()
 
     def forward(self, z_mean, z_var):
-        batch = z_mean.shape[0]
-        dim = z_mean.shape[1]
-        # by default, random_normal has mean = 0 and std = 1.0
-        epsilon = torch.empty((batch, dim), device=z_mean.device).normal_()
-        return z_mean + torch.exp(0.5 * z_var) * epsilon
+        if self.training:
+            std = torch.exp(0.5 * z_var)
+            # by default, random_normal has mean = 0 and std = 1.0
+            epsilon = torch.empty_like(z_var, device=z_mean.device).normal_()
+            return z_mean + std*epsilon
+        else:
+            return z_mean
 
 
 class UpGreenBlock(nn.Sequential):

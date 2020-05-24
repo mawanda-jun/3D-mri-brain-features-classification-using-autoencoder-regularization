@@ -81,14 +81,14 @@ class VAELoss(nn.Module):
         self.weight_KL = weight_KL
         self.weight_L2 = weight_L2
 
-    def loss(self, y_true, y_pred, z_mean, z_var):
+    def loss(self, y_pred, y_true, z_mean, z_var):
         # loss_L2 = torch.mean(torch.square(y_true - y_pred), dim=(1, 2, 3, 4))  # original axis value is (1,2,3,4).
         loss_L2 = torch.nn.functional.mse_loss(y_pred, y_true)  # original axis value is (1,2,3,4).
 
         # loss_KL = (1 / self.N) * torch.sum(torch.exp(z_var) + torch.square(z_mean) - 1. - z_var, dim=-1)
-        loss_KL = 0.5 * torch.sum(torch.exp(z_var) + z_mean**2 - 1. - z_var)
+        loss_KL = 0.5 * torch.sum(z_var.exp() + z_mean.pow(2) - 1. - z_var) / y_pred.size(0)
 
         return self.weight_L2 * loss_L2 + self.weight_KL * loss_KL
 
-    def forward(self, target, output, z_var, z_mean):
-        return self.loss(target, output, z_var, z_mean)
+    def forward(self, reconstructed_image, input_image, z_mean, z_var):
+        return self.loss(reconstructed_image, input_image, z_mean, z_var)
