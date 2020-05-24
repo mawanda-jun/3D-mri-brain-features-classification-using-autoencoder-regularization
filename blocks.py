@@ -34,6 +34,7 @@ class GreenBlock(nn.Module):
             The size of the rest of the dimensions remains same as in `inp`.
         """
         super(GreenBlock, self).__init__()
+        out_channels //= 2
         self.res = nn.Conv3d(in_channels, out_channels, kernel_size=1, stride=1)
         # Calculate output shape to predict padding dimension
         out_dim = calc_conv_shape(input_side_dim, 1, 0, 1)
@@ -53,8 +54,8 @@ class GreenBlock(nn.Module):
 
     def forward(self, inputs):
         x_res = self.res(inputs)
-        x = self.block(inputs)
-        return x + x_res
+        x = torch.nn.functional.dropout(self.block(inputs), p=0.3, training=self.training)
+        return torch.cat([x, x_res], dim=1)
 
 
 # From keras-team/keras/blob/master/examples/variational_autoencoder.py
