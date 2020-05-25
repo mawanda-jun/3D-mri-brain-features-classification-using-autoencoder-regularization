@@ -1,0 +1,2 @@
+from vae_classifier import BrainClassifierVAE
+from losses import VAELoss
