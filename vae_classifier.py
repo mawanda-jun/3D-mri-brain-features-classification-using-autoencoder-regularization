@@ -79,7 +79,7 @@ class Classifier(nn.Module):
 
 
 class VAERegularization(nn.Module):
-    def __init__(self, repr_dim=128, input_side_dim=6, model_depth=32):
+    def __init__(self, input_side_dim=6, model_depth=32):
         super(VAERegularization, self).__init__()
         # VAE regularization
         self.reduce_dimension = nn.Sequential(OrderedDict([
@@ -94,8 +94,8 @@ class VAERegularization(nn.Module):
         # print("out dim after VAE: {}".format(out_dim))
         # REPARAMETERIZATION TRICK (needs flattening)
         self.out_linear = nn.Linear(in_features=(model_depth // 2) * out_dim ** 3, out_features=model_depth * 8)
-        self.z_mean = nn.Linear(in_features=model_depth * 8, out_features=repr_dim)
-        self.z_var = nn.Linear(in_features=model_depth * 8, out_features=repr_dim)
+        self.z_mean = nn.Linear(in_features=model_depth * 8, out_features=model_depth*4)
+        self.z_var = nn.Linear(in_features=model_depth * 8, out_features=model_depth*4)
         self.reparameterization = Reparametrization()
 
     def forward(self, inputs):
@@ -108,12 +108,12 @@ class VAERegularization(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, repr_dim=128, model_depth=32, num_channels=1, input_side_dim=3):
+    def __init__(self, model_depth=32, num_channels=1, input_side_dim=3):
         super(Decoder, self).__init__()
         self.model_depth = model_depth
         self.input_side_dim = input_side_dim
         self.reshape_block = nn.Sequential(OrderedDict([
-            ('fc0', nn.Linear(in_features=repr_dim, out_features=(model_depth // 2) * input_side_dim ** 3)),
+            ('fc0', nn.Linear(in_features=model_depth*4, out_features=(model_depth // 2) * input_side_dim ** 3)),
             ('relu', nn.ReLU(inplace=True)),
         ]))
 
@@ -145,12 +145,11 @@ class BrainClassifierVAE(nn.Module):
         # input_side_dim = 6
 
         # VAE regularization
-        self.internal_representation = VAERegularization(repr_dim=128, input_side_dim=6, model_depth=model_depth)
+        self.internal_representation = VAERegularization(input_side_dim=6, model_depth=model_depth)
 
         # DECODER
         # The internal representation shrinks the dimension by a factor of 2
         self.decoder = Decoder(
-            repr_dim=128,
             model_depth=model_depth,
             num_channels=in_channels,
             input_side_dim=3
