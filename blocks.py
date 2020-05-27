@@ -43,18 +43,18 @@ class GreenBlock(nn.Module):
         self.block = nn.Sequential(OrderedDict([
             # ('group_norm0', GroupNormalization(in_channels, groups=8, padding=0)),
             ('norm0', nn.BatchNorm3d(num_features=in_channels)),
-            ('relu0', nn.ReLU(inplace=True)),
+            ('relu0', nn.LeakyReLU(inplace=True)),
             ('conv0', nn.Conv3d(in_channels, out_channels, kernel_size=3, stride=1, padding=next_padding)),
             # Since padding is "same" we can keep the same padding value for the next convolution
             # ('group_norm1', GroupNormalization(out_channels, groups=8)),
             ('norm1', nn.BatchNorm3d(num_features=out_channels)),
-            ('relu1', nn.ReLU(inplace=True)),
+            ('relu1', nn.LeakyReLU(inplace=True)),
             ('conv2', nn.Conv3d(out_channels, out_channels, kernel_size=3, stride=1, padding=next_padding)),
         ]))
 
     def forward(self, inputs):
         x_res = self.res(inputs)
-        x = torch.nn.functional.dropout(self.block(inputs), p=0.3, training=self.training)
+        x = torch.nn.functional.dropout(self.block(inputs), p=0.4, training=self.training)
         return torch.cat([x, x_res], dim=1)
 
 

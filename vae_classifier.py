@@ -54,28 +54,21 @@ class Classifier(nn.Module):
         next_padding = calc_same_padding(out_dim_2, 3, 1)
         out_dim_3 = calc_conv_shape(out_dim_2, 3, next_padding, 1)
         self.to_ground_truth = nn.Sequential(OrderedDict([
-            ('conv0',
-             nn.Conv3d(in_channels=model_depth * 8, out_channels=model_depth * 4, kernel_size=(1, 1, 1), stride=1,
-                       padding=0)),
+            ('conv0', nn.Conv3d(model_depth * 8, model_depth * 4, kernel_size=(1, 1, 1), stride=1, padding=0)),
             ('green0', GreenBlock(model_depth * 4, model_depth * 4, out_dim_0)),
-            ('conv1',
-             nn.Conv3d(in_channels=model_depth * 4, out_channels=model_depth * 2, kernel_size=(1, 1, 1), stride=1,
-                       padding=0)),
+            ('conv1', nn.Conv3d(model_depth * 4, model_depth * 2, kernel_size=(1, 1, 1), stride=1, padding=0)),
             ('green1', GreenBlock(model_depth * 2, model_depth * 2, out_dim_1)),
-            ('conv2', nn.Conv3d(in_channels=model_depth * 2, out_channels=model_depth, kernel_size=(1, 1, 1), stride=1,
-                                padding=0)),
+            ('conv2', nn.Conv3d(model_depth * 2, model_depth, kernel_size=(1, 1, 1), stride=1, padding=0)),
             ('green2', GreenBlock(model_depth, model_depth, out_dim_2)),
-            ('conv3',
-             nn.Conv3d(in_channels=model_depth, out_channels=model_depth, kernel_size=(3, 3, 3), stride=1,
-                       padding=next_padding)),
-            ('relu', nn.ReLU(inplace=True))
+            ('conv3', nn.Conv3d(model_depth, model_depth, kernel_size=(3, 3, 3), stride=1, padding=next_padding)),
+            ('relu', nn.LeakyReLU(inplace=True))
         ]))
         # print('Classifier has {} features'.format(model_depth * out_dim_3 ** 3))
         self.regressor = nn.Linear(in_features=model_depth * out_dim_3 ** 3, out_features=num_classes)
 
     def forward(self, inputs):
         conv_out = self.to_ground_truth(inputs)
-        return self.regressor(conv_out.view(conv_out.shape[0], -1))
+        return torch.nn.functional.relu(self.regressor(conv_out.view(conv_out.shape[0], -1)), inplace=True)
 
 
 class VAERegularization(nn.Module):
@@ -85,10 +78,8 @@ class VAERegularization(nn.Module):
         self.reduce_dimension = nn.Sequential(OrderedDict([
             # ('group_normR', GroupNormalization(in_features, groups=8)),
             ('norm0', nn.BatchNorm3d(model_depth * 8)),
-            ('reluR0', nn.ReLU(inplace=True)),
-            ('convR0',
-             nn.Conv3d(in_channels=model_depth * 8, out_channels=model_depth // 2, kernel_size=(3, 3, 3), stride=2,
-                       padding=1)),
+            ('reluR0', nn.LeakyReLU(inplace=True)),
+            ('convR0', nn.Conv3d(model_depth * 8, model_depth // 2, kernel_size=(3, 3, 3), stride=2, padding=1)),
         ]))
         out_dim = 3
         # print("out dim after VAE: {}".format(out_dim))
@@ -114,7 +105,7 @@ class Decoder(nn.Module):
         self.input_side_dim = input_side_dim
         self.reshape_block = nn.Sequential(OrderedDict([
             ('fc0', nn.Linear(in_features=model_depth*4, out_features=(model_depth // 2) * input_side_dim ** 3)),
-            ('relu', nn.ReLU(inplace=True)),
+            ('relu', nn.LeakyReLU(inplace=True)),
         ]))
 
         blue_padding = calc_same_padding(48, 3, 1)
@@ -124,8 +115,7 @@ class Decoder(nn.Module):
             ('upgreen0', UpGreenBlock(model_depth * 8, model_depth * 4, input_side_dim)),
             ('upgreen1', UpGreenBlock(model_depth * 4, model_depth * 2, 12)),
             ('upgreen2', UpGreenBlock(model_depth * 2, model_depth, 24)),
-            ('blue_block', nn.Conv3d(in_channels=model_depth, out_channels=model_depth, kernel_size=3, stride=1,
-                                     padding=blue_padding)),
+            ('blue_block', nn.Conv3d(model_depth, model_depth, kernel_size=3, stride=1, padding=blue_padding)),
             ('output_block', nn.Conv3d(in_channels=model_depth, out_channels=num_channels, kernel_size=1, stride=1))
         ]))
 
